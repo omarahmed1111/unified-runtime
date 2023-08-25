@@ -298,7 +298,7 @@ Specific environment variables can be set to control the behavior of unified run
 
 .. envvar:: UR_ENABLE_LAYERS
 
-    Holds a comma-separated list of layers to enable in addition to any specified via ``urInit``.
+    Holds a comma-separated list of layers to enable in addition to any specified via ``urLoaderInit``.
 
     .. note::
 
