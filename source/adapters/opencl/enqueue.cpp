@@ -16,6 +16,23 @@
 #include "program.hpp"
 #include "queue.hpp"
 
+ur_result_t createUREvent(cl_event event, ur_context_handle_t context,
+                          ur_queue_handle_t queue,
+                          ur_event_handle_t *returnedEvent) {
+  if (returnedEvent) {
+    try {
+      auto UREvent =
+          std::make_unique<ur_event_handle_t_>(event, context, queue);
+      *returnedEvent = UREvent.release();
+    } catch (std::bad_alloc &) {
+      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
+    } catch (...) {
+      return UR_RESULT_ERROR_UNKNOWN;
+    }
+  }
+  return UR_RESULT_SUCCESS;
+}
+
 cl_map_flags convertURMapFlagsToCL(ur_map_flags_t URFlags) {
   cl_map_flags CLFlags = 0;
   if (URFlags & UR_MAP_FLAG_READ) {
@@ -31,6 +48,13 @@ cl_map_flags convertURMapFlagsToCL(ur_map_flags_t URFlags) {
   return CLFlags;
 }
 
+void MapUREventsToCL(uint32_t numEvents, const ur_event_handle_t *UREvents,
+                     std::vector<cl_event> &CLEvents) {
+  for (uint32_t i = 0; i < numEvents; i++) {
+    CLEvents[i] = UREvents[i]->CLEvent;
+  }
+}
+
 UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
     ur_queue_handle_t hQueue, ur_kernel_handle_t hKernel, uint32_t workDim,
     const size_t *pGlobalWorkOffset, const size_t *pGlobalWorkSize,
@@ -38,24 +62,14 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueKernelLaunch(
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
+
   CL_RETURN_ON_FAILURE(
       clEnqueueNDRangeKernel(hQueue->CLQueue, hKernel->CLKernel, workDim,
                              pGlobalWorkOffset, pGlobalWorkSize, pLocalWorkSize,
                              numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -74,22 +88,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueEventsWait(
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueMarkerWithWaitList(
       hQueue->CLQueue, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -98,22 +101,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueEventsWaitWithBarrier(
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueBarrierWithWaitList(
       hQueue->CLQueue, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -123,23 +115,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferRead(
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueReadBuffer(
       hQueue->CLQueue, hBuffer->CLMemory, blockingRead, offset, size, pDst,
       numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -149,23 +130,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferWrite(
     const ur_event_handle_t *phEventWaitList, ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueWriteBuffer(
       hQueue->CLQueue, hBuffer->CLMemory, blockingWrite, offset, size, pSrc,
       numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -182,24 +152,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferReadRect(
   const size_t Region[3] = {region.width, region.height, region.depth};
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueReadBufferRect(
       hQueue->CLQueue, hBuffer->CLMemory, blockingRead, BufferOrigin,
       HostOrigin, Region, bufferRowPitch, bufferSlicePitch, hostRowPitch,
       hostSlicePitch, pDst, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -216,24 +175,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferWriteRect(
   const size_t Region[3] = {region.width, region.height, region.depth};
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueWriteBufferRect(
       hQueue->CLQueue, hBuffer->CLMemory, blockingWrite, BufferOrigin,
       HostOrigin, Region, bufferRowPitch, bufferSlicePitch, hostRowPitch,
       hostSlicePitch, pSrc, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -244,23 +192,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferCopy(
     ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueCopyBuffer(
       hQueue->CLQueue, hBufferSrc->CLMemory, hBufferDst->CLMemory, srcOffset,
       dstOffset, size, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -276,24 +213,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferCopyRect(
   const size_t Region[3] = {region.width, region.height, region.depth};
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueCopyBufferRect(
       hQueue->CLQueue, hBufferSrc->CLMemory, hBufferDst->CLMemory, SrcOrigin,
       DstOrigin, Region, srcRowPitch, srcSlicePitch, dstRowPitch, dstSlicePitch,
       numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -307,23 +233,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferFill(
   if (patternSize <= 128) {
     cl_event Event;
     std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-    for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-      CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-    }
+    MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
     CL_RETURN_ON_FAILURE(clEnqueueFillBuffer(
         hQueue->CLQueue, hBuffer->CLMemory, pPattern, patternSize, offset, size,
         numEventsInWaitList, CLWaitEvents.data(), &Event));
-    if (phEvent) {
-      try {
-        auto UREvent = std::make_unique<ur_event_handle_t_>(
-            Event, hQueue->Context, hQueue);
-        *phEvent = UREvent.release();
-      } catch (std::bad_alloc &) {
-        return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-      } catch (...) {
-        return UR_RESULT_ERROR_UNKNOWN;
-      }
-    }
+
+    UR_RETURN_ON_FAILURE(
+        createUREvent(Event, hQueue->Context, hQueue, phEvent));
     return UR_RESULT_SUCCESS;
   }
 
@@ -336,9 +252,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferFill(
 
   cl_event WriteEvent = nullptr;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   auto ClErr = clEnqueueWriteBuffer(
       hQueue->CLQueue, hBuffer->CLMemory, false, offset, size, HostBuffer,
       numEventsInWaitList, CLWaitEvents.data(), &WriteEvent);
@@ -362,15 +276,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferFill(
   }
 
   if (phEvent) {
-    try {
-      auto UREvent = std::make_unique<ur_event_handle_t_>(
-          WriteEvent, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
+    UR_RETURN_ON_FAILURE(
+        createUREvent(WriteEvent, hQueue->Context, hQueue, phEvent));
   } else {
     CL_RETURN_ON_FAILURE(clReleaseEvent(WriteEvent));
   }
@@ -387,23 +294,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemImageRead(
   const size_t Region[3] = {region.width, region.height, region.depth};
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueReadImage(
       hQueue->CLQueue, hImage->CLMemory, blockingRead, Origin, Region, rowPitch,
       slicePitch, pDst, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -416,24 +312,12 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemImageWrite(
   const size_t Region[3] = {region.width, region.height, region.depth};
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(
       clEnqueueWriteImage(hQueue->CLQueue, hImage->CLMemory, blockingWrite,
                           Origin, Region, rowPitch, slicePitch, pSrc,
                           numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -448,23 +332,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemImageCopy(
   const size_t Region[3] = {region.width, region.height, region.depth};
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueCopyImage(
       hQueue->CLQueue, hImageSrc->CLMemory, hImageDst->CLMemory, SrcOrigin,
       DstOrigin, Region, numEventsInWaitList, CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -475,25 +347,13 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemBufferMap(
     ur_event_handle_t *phEvent, void **ppRetMap) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   cl_int Err;
   *ppRetMap = clEnqueueMapBuffer(hQueue->CLQueue, hBuffer->CLMemory,
                                  blockingMap, convertURMapFlagsToCL(mapFlags),
                                  offset, size, numEventsInWaitList,
                                  CLWaitEvents.data(), &Event, &Err);
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return mapCLErrorToUR(Err);
 }
 
@@ -503,23 +363,11 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueMemUnmap(
     ur_event_handle_t *phEvent) {
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   CL_RETURN_ON_FAILURE(clEnqueueUnmapMemObject(hQueue->CLQueue, hMem->CLMemory,
                                                pMappedPtr, numEventsInWaitList,
                                                CLWaitEvents.data(), &Event));
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return UR_RESULT_SUCCESS;
 }
 
@@ -532,9 +380,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableWrite(
   cl_context Ctx = hQueue->Context->CLContext;
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   cl_ext::clEnqueueWriteGlobalVariable_fn F = nullptr;
   UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<decltype(F)>(
       Ctx, cl_ext::ExtFuncPtrCache->clEnqueueWriteGlobalVariableCache,
@@ -543,17 +389,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableWrite(
   cl_int Res =
       F(hQueue->CLQueue, hProgram->CLProgram, name, blockingWrite, count,
         offset, pSrc, numEventsInWaitList, CLWaitEvents.data(), &Event);
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return mapCLErrorToUR(Res);
 }
 
@@ -566,9 +402,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableRead(
   cl_context Ctx = hQueue->Context->CLContext;
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   cl_ext::clEnqueueReadGlobalVariable_fn F = nullptr;
   UR_RETURN_ON_FAILURE(cl_ext::getExtFuncFromContext<decltype(F)>(
       Ctx, cl_ext::ExtFuncPtrCache->clEnqueueReadGlobalVariableCache,
@@ -578,17 +412,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueDeviceGlobalVariableRead(
       F(hQueue->CLQueue, hProgram->CLProgram, name, blockingRead, count, offset,
         pDst, numEventsInWaitList, CLWaitEvents.data(), &Event);
 
-  if (phEvent) {
-    try {
-      auto UREvent =
-          std::make_unique<ur_event_handle_t_>(Event, hQueue->Context, hQueue);
-      *phEvent = UREvent.release();
-    } catch (std::bad_alloc &) {
-      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-    } catch (...) {
-      return UR_RESULT_ERROR_UNKNOWN;
-    }
-  }
+  UR_RETURN_ON_FAILURE(createUREvent(Event, hQueue->Context, hQueue, phEvent));
   return mapCLErrorToUR(Res);
 }
 
@@ -601,9 +425,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueReadHostPipe(
   cl_context CLContext = hQueue->Context->CLContext;
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   cl_ext::clEnqueueReadHostPipeINTEL_fn FuncPtr = nullptr;
   UR_RETURN_ON_FAILURE(
       cl_ext::getExtFuncFromContext<cl_ext::clEnqueueReadHostPipeINTEL_fn>(
@@ -615,17 +437,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueReadHostPipe(
         FuncPtr(hQueue->CLQueue, hProgram->CLProgram, pipe_symbol, blocking,
                 pDst, size, numEventsInWaitList, CLWaitEvents.data(), &Event));
 
-    if (phEvent) {
-      try {
-        auto UREvent = std::make_unique<ur_event_handle_t_>(
-            Event, hQueue->Context, hQueue);
-        *phEvent = UREvent.release();
-      } catch (std::bad_alloc &) {
-        return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-      } catch (...) {
-        return UR_RESULT_ERROR_UNKNOWN;
-      }
-    }
+    UR_RETURN_ON_FAILURE(
+        createUREvent(Event, hQueue->Context, hQueue, phEvent));
   }
 
   return UR_RESULT_SUCCESS;
@@ -640,9 +453,7 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueWriteHostPipe(
   cl_context CLContext = hQueue->Context->CLContext;
   cl_event Event;
   std::vector<cl_event> CLWaitEvents(numEventsInWaitList);
-  for (uint32_t i = 0; i < numEventsInWaitList; i++) {
-    CLWaitEvents[i] = phEventWaitList[i]->CLEvent;
-  }
+  MapUREventsToCL(numEventsInWaitList, phEventWaitList, CLWaitEvents);
   cl_ext::clEnqueueWriteHostPipeINTEL_fn FuncPtr = nullptr;
   UR_RETURN_ON_FAILURE(
       cl_ext::getExtFuncFromContext<cl_ext::clEnqueueWriteHostPipeINTEL_fn>(
@@ -653,17 +464,8 @@ UR_APIEXPORT ur_result_t UR_APICALL urEnqueueWriteHostPipe(
     CL_RETURN_ON_FAILURE(
         FuncPtr(hQueue->CLQueue, hProgram->CLProgram, pipe_symbol, blocking,
                 pSrc, size, numEventsInWaitList, CLWaitEvents.data(), &Event));
-    if (phEvent) {
-      try {
-        auto UREvent = std::make_unique<ur_event_handle_t_>(
-            Event, hQueue->Context, hQueue);
-        *phEvent = UREvent.release();
-      } catch (std::bad_alloc &) {
-        return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-      } catch (...) {
-        return UR_RESULT_ERROR_UNKNOWN;
-      }
-    }
+    UR_RETURN_ON_FAILURE(
+        createUREvent(Event, hQueue->Context, hQueue, phEvent));
   }
 
   return UR_RESULT_SUCCESS;
