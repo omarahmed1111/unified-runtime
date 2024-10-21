@@ -41,7 +41,6 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGet(ur_platform_handle_t hPlatform,
   default:
     return UR_RESULT_ERROR_INVALID_ENUMERATION;
   }
-  UR_RETURN_ON_FAILURE(hPlatform->InitDevices());
   try {
     uint32_t AllDevicesNum = hPlatform->Devices.size();
     uint32_t DeviceNumIter = 0;

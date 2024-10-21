@@ -90,6 +90,7 @@ urPlatformGet(ur_adapter_handle_t *, uint32_t, uint32_t NumEntries,
       for (uint32_t i = 0; i < NumPlatforms; i++) {
         auto URPlatform =
             std::make_unique<ur_platform_handle_t_>(CLPlatforms[i]);
+        UR_RETURN_ON_FAILURE(URPlatform->InitDevices());
         Adapter->URPlatforms.emplace_back(URPlatform.release());
       }
       Adapter->NumPlatforms = NumPlatforms;
