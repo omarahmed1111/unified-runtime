@@ -1131,16 +1131,16 @@ UR_APIEXPORT ur_result_t UR_APICALL urDeviceGetNativeHandle(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urDeviceCreateWithNativeHandle(
-    ur_native_handle_t hNativeDevice, ur_adapter_handle_t hAdapter,
+    ur_native_handle_t hNativeDevice, ur_adapter_handle_t,
     const ur_device_native_properties_t *pProperties,
     ur_device_handle_t *phDevice) {
   cl_device_id NativeHandle = reinterpret_cast<cl_device_id>(hNativeDevice);
 
   uint32_t NumPlatforms = 0;
-  UR_RETURN_ON_FAILURE(urPlatformGet(&hAdapter, 1, 0, nullptr, &NumPlatforms));
+  UR_RETURN_ON_FAILURE(urPlatformGet(nullptr, 0, 0, nullptr, &NumPlatforms));
   std::vector<ur_platform_handle_t> Platforms(NumPlatforms);
   UR_RETURN_ON_FAILURE(
-      urPlatformGet(&hAdapter, 1, NumPlatforms, Platforms.data(), nullptr));
+      urPlatformGet(nullptr, 0, NumPlatforms, Platforms.data(), nullptr));
 
   for (uint32_t i = 0; i < NumPlatforms; i++) {
     uint32_t NumDevices = 0;

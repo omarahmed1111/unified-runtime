@@ -63,52 +63,48 @@ urPlatformGetApiVersion([[maybe_unused]] ur_platform_handle_t hPlatform,
   return UR_RESULT_SUCCESS;
 }
 
-UR_APIEXPORT ur_result_t UR_APICALL urPlatformGet(
-    ur_adapter_handle_t *phAdapters, uint32_t NumAdapters, uint32_t NumEntries,
-    ur_platform_handle_t *phPlatforms, uint32_t *pNumPlatforms) {
-  for (uint32_t idx = 0; idx < NumAdapters; idx++) {
-    if (!(phAdapters[idx]->NumPlatforms)) {
-      uint32_t NumPlatforms = 0;
-      cl_int Res = clGetPlatformIDs(0, nullptr, &NumPlatforms);
+UR_APIEXPORT ur_result_t UR_APICALL
+urPlatformGet(ur_adapter_handle_t *, uint32_t, uint32_t NumEntries,
+              ur_platform_handle_t *phPlatforms, uint32_t *pNumPlatforms) {
 
-      std::vector<cl_platform_id> CLPlatforms(NumPlatforms);
-      Res = clGetPlatformIDs(static_cast<cl_uint>(NumPlatforms),
-                             CLPlatforms.data(), nullptr);
+  ur_adapter_handle_t Adapter = nullptr;
+  UR_RETURN_ON_FAILURE(urAdapterGet(1, &Adapter, nullptr));
+  if (Adapter && !(Adapter->NumPlatforms)) {
+    uint32_t NumPlatforms = 0;
+    cl_int Res = clGetPlatformIDs(0, nullptr, &NumPlatforms);
 
-      /* Absorb the CL_PLATFORM_NOT_FOUND_KHR and just return 0 in num_platforms
-       */
-      if (Res == CL_PLATFORM_NOT_FOUND_KHR) {
-        if (pNumPlatforms) {
-          *pNumPlatforms = 0;
-          return UR_RESULT_SUCCESS;
-        }
-      }
-      CL_RETURN_ON_FAILURE(Res);
-      try {
-        for (uint32_t i = 0; i < NumPlatforms; i++) {
-          auto URPlatform =
-              std::make_unique<ur_platform_handle_t_>(CLPlatforms[i]);
-          phAdapters[idx]->URPlatforms.emplace_back(URPlatform.release());
-        }
-        phAdapters[idx]->NumPlatforms = NumPlatforms;
-      } catch (std::bad_alloc &) {
-        return UR_RESULT_ERROR_OUT_OF_RESOURCES;
-      } catch (...) {
-        return UR_RESULT_ERROR_INVALID_PLATFORM;
+    std::vector<cl_platform_id> CLPlatforms(NumPlatforms);
+    Res = clGetPlatformIDs(static_cast<cl_uint>(NumPlatforms),
+                           CLPlatforms.data(), nullptr);
+
+    /* Absorb the CL_PLATFORM_NOT_FOUND_KHR and just return 0 in num_platforms
+     */
+    if (Res == CL_PLATFORM_NOT_FOUND_KHR) {
+      if (pNumPlatforms) {
+        *pNumPlatforms = 0;
+        return UR_RESULT_SUCCESS;
       }
     }
-  }
-  if (pNumPlatforms) {
-    *pNumPlatforms = 0;
-  }
-  for (uint32_t idx = 0; idx < NumAdapters; idx++) {
-    if (pNumPlatforms != nullptr) {
-      *pNumPlatforms += phAdapters[idx]->NumPlatforms;
-    }
-    if (NumEntries && phPlatforms) {
-      for (uint32_t i = 0; i < NumEntries; i++) {
-        phPlatforms[i] = phAdapters[idx]->URPlatforms[i].get();
+    CL_RETURN_ON_FAILURE(Res);
+    try {
+      for (uint32_t i = 0; i < NumPlatforms; i++) {
+        auto URPlatform =
+            std::make_unique<ur_platform_handle_t_>(CLPlatforms[i]);
+        Adapter->URPlatforms.emplace_back(URPlatform.release());
       }
+      Adapter->NumPlatforms = NumPlatforms;
+    } catch (std::bad_alloc &) {
+      return UR_RESULT_ERROR_OUT_OF_RESOURCES;
+    } catch (...) {
+      return UR_RESULT_ERROR_INVALID_PLATFORM;
+    }
+  }
+  if (pNumPlatforms != nullptr) {
+    *pNumPlatforms = Adapter->NumPlatforms;
+  }
+  if (NumEntries && phPlatforms) {
+    for (uint32_t i = 0; i < NumEntries; i++) {
+      phPlatforms[i] = Adapter->URPlatforms[i].get();
     }
   }
   return UR_RESULT_SUCCESS;
@@ -122,16 +118,16 @@ UR_APIEXPORT ur_result_t UR_APICALL urPlatformGetNativeHandle(
 }
 
 UR_APIEXPORT ur_result_t UR_APICALL urPlatformCreateWithNativeHandle(
-    ur_native_handle_t hNativePlatform, ur_adapter_handle_t hAdapter,
+    ur_native_handle_t hNativePlatform, ur_adapter_handle_t,
     const ur_platform_native_properties_t *, ur_platform_handle_t *phPlatform) {
   cl_platform_id NativeHandle =
       reinterpret_cast<cl_platform_id>(hNativePlatform);
 
   uint32_t NumPlatforms = 0;
-  UR_RETURN_ON_FAILURE(urPlatformGet(&hAdapter, 1, 0, nullptr, &NumPlatforms));
+  UR_RETURN_ON_FAILURE(urPlatformGet(nullptr, 0, 0, nullptr, &NumPlatforms));
   std::vector<ur_platform_handle_t> Platforms(NumPlatforms);
   UR_RETURN_ON_FAILURE(
-      urPlatformGet(&hAdapter, 1, NumPlatforms, Platforms.data(), nullptr));
+      urPlatformGet(nullptr, 0, NumPlatforms, Platforms.data(), nullptr));
 
   for (uint32_t i = 0; i < NumPlatforms; i++) {
     if (Platforms[i]->CLPlatform == NativeHandle) {
